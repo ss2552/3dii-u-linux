@@ -26,10 +26,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          id=$(docker create ghcr.io/wiiu-env/devkitppc:20240505)
-          docker cp "$id:/opt/devkitpro" /tmp/devkitpro
-          docker rm "$id"
-          sudo mv /tmp/devkitpro /opt/devkitpro
+          # docker cp はコンテナ外を指すシンボリックリンクで失敗するため、tar でそのまま取り出す
+          docker run --rm --entrypoint tar ghcr.io/wiiu-env/devkitppc:20240505 \
+            -C /opt -cf - devkitpro | sudo tar -xf - -C /opt
           echo "/opt/devkitpro/tools/bin" >> "$GITHUB_PATH"
           echo "/opt/devkitpro/devkitPPC/bin" >> "$GITHUB_PATH"
 
