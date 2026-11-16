@@ -106,7 +106,18 @@ jobs:
           .venv/bin/python -m pip install PySide6-Essentials pyctr pycryptodome cryptography
           .venv/bin/python tools/setup.py --deps-archive /tmp/3dii-u-deps-1.zip
 
+      # PySide6 (QtGui) が読み込む共有ライブラリ。GUI 無しの CI では offscreen で動かす
+      - name: Install Qt runtime libraries
+        shell: bash
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libegl1 libgl1 libopengl0 libxkbcommon0 libfontconfig1 libdbus-1-3
+
       - name: Run project checks
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           .venv/bin/python tools/selftest.py
           .venv/bin/python tools/test_linux_build.py --full
