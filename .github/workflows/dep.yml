@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -21,16 +22,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-
       - name: Install host build tools
         run: |
           apt-get update
           apt-get install --yes --no-install-recommends \
             build-essential curl unzip ca-certificates
+
+      # devkitpro/devkitppc には wut / elf2rpl が入っていないため追加する
+      - name: Install Wii U toolchain (wut)
+        run: dkp-pacman -Sy --noconfirm --needed wut wut-tools
 
       - name: Verify devkitPro Wii U toolchain
         shell: bash
@@ -41,8 +41,19 @@ jobs:
           test -x "$DEVKITPRO/tools/bin/elf2rpl"
           test -f "$DEVKITPRO/wut/share/wut.ld"
 
-      - name: Install project build dependencies
+      # Debian ベースのコンテナでは setup-python が使えない場合があるため uv で Python 3.14 を用意する
+      - name: Set up Python 3.14 (uv)
+        shell: bash
         run: |
+          set -euxo pipefail
+          curl --fail --silent --show-error --location https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv venv --seed --python 3.14 .venv
+
+      - name: Install project build dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
           mkdir -p third_party/cafeglsl builder/bin
           curl --fail --silent --show-error --location \
             https://github.com/Exzap/CafeGLSL/releases/download/v0.2.0/glslcompiler.elf \
@@ -59,7 +70,6 @@ jobs:
             https://github.com/J-Glitch2502/3dii-u/releases/download/deps-1/3dii-u-deps-1.zip \
             --output /tmp/3dii-u-deps-1.zip
 
-          python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install PySide6-Essentials pyctr pycryptodome cryptography
           .venv/bin/python tools/setup.py --deps-archive /tmp/3dii-u-deps-1.zip
@@ -78,3 +88,29 @@ jobs:
           name: 3diiu-linux
           path: builder/dist/3Dii U Builder Linux.zip
           if-no-files-found: error
+
+  release:
+    # v* タグを push したときだけ GitHub Release を作成する
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: linux-build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: 3diiu-linux
+          path: dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          mv "dist/3Dii U Builder Linux.zip" dist/3diiu-linux.zip
+          gh release create "$GITHUB_REF_NAME" dist/3diiu-linux.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
