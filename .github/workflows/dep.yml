@@ -13,7 +13,7 @@ jobs:
   linux-build:
     runs-on: ubuntu-26.04
     container:
-      image: devkitpro/wut
+      image: ghcr.io/wiiu-env/devkitppc:20240505
     env:
       DEVKITPRO: /opt/devkitpro
       DEVKITPPC: /opt/devkitpro/devkitPPC
@@ -28,7 +28,7 @@ jobs:
           apt-get install --yes --no-install-recommends \
             build-essential curl unzip ca-certificates
 
-      # devkitpro/wut には wut / elf2rpl が入っている。足りない場合だけ pacman で追加する
+      # ghcr.io/wiiu-env/devkitppc には wut / elf2rpl が入っている。足りない場合だけ pacman で追加する
       # (pkg.devkitpro.org は GitHub のランナーから 403 になることがあるため、通常は通信しない)
       - name: Ensure Wii U toolchain (wut)
         shell: bash
