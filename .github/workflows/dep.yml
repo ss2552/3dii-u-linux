@@ -1,0 +1,75 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  linux-build:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential curl unzip ca-certificates
+
+      - name: Install devkitPro Wii U toolchain
+        run: |
+          curl --fail --silent --show-error --location \
+            https://apt.devkitpro.org/install-devkitpro-pacman \
+            | sudo bash
+          sudo dkp-pacman -Syu --needed --noconfirm wiiu-dev
+
+      - name: Install project build dependencies
+        run: |
+          mkdir -p third_party/cafeglsl builder/bin
+
+          curl --fail --silent --show-error --location \
+            https://github.com/Exzap/CafeGLSL/releases/download/v0.2.0/glslcompiler.elf \
+            --output third_party/cafeglsl/glslcompiler
+          chmod +x third_party/cafeglsl/glslcompiler
+
+          curl --fail --silent --show-error --location \
+            https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip \
+            --output /tmp/makerom.zip
+          unzip -p /tmp/makerom.zip makerom > builder/bin/makerom
+          chmod +x builder/bin/makerom
+
+          curl --fail --silent --show-error --location \
+            https://github.com/J-Glitch2502/3dii-u/releases/download/deps-1/3dii-u-deps-1.zip \
+            --output /tmp/3dii-u-deps-1.zip
+
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install PySide6-Essentials pyctr pycryptodome cryptography
+          .venv/bin/python tools/setup.py --deps-archive /tmp/3dii-u-deps-1.zip
+
+      - name: Run project checks
+        run: |
+          .venv/bin/python tools/selftest.py
+          .venv/bin/python tools/test_linux_build.py --full
+
+      - name: Produce Linux bundle
+        run: |
+          .venv/bin/python builder/make_linux_zip.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3diiu-linux
+          path: builder/dist/3Dii U Builder Linux.zip
+          if-no-files-found: error
