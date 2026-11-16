@@ -26,13 +26,13 @@ jobs:
         shell: bash
         run: sudo install -d -o "$(id -u)" -g "$(id -g)" /opt/devkitpro
 
-      # 取り出し + wut のビルド結果をキャッシュする(wut を更新したら key の v1 を上げる)
+      # 取り出し + wut のビルド結果をキャッシュする(wut などを更新し直したいときは key の v2 を上げる)
       - name: Cache devkitPro toolchain
         id: dkp-cache
         uses: actions/cache@v4
         with:
           path: /opt/devkitpro
-          key: devkitpro-wiiu-20240505-wut-master-v1
+          key: devkitpro-dkp20260503-wut-master-v2
 
       - name: Extract devkitPro toolchain (Wii U)
         if: steps.dkp-cache.outputs.cache-hit != 'true'
@@ -40,10 +40,14 @@ jobs:
         run: |
           set -euxo pipefail
           # docker cp はコンテナ外を指すシンボリックリンクで失敗するため、tar でそのまま取り出す
-          docker run --rm --entrypoint tar ghcr.io/wiiu-env/devkitppc:20240505 \
+          # devkitPPC は新しめの公式イメージを使う(古い wiiu-env のイメージは newlib が古く、最新の wut をビルドできない)
+          docker run --rm --entrypoint tar devkitpro/devkitppc:20260503 \
             -C /opt -cf - devkitpro | tar -xf - --no-same-owner -C /opt
+          # 公式イメージには wut-tools (elf2rpl など) が無いため、wiiu-env のイメージから補う
+          docker run --rm --entrypoint tar ghcr.io/wiiu-env/devkitppc:20240505 \
+            -C /opt/devkitpro -cf - tools | tar -xf - --no-same-owner --skip-old-files -C /opt/devkitpro
 
-      # イメージの wut は古い(thread API 1.9.2 未満)ため、ソースから更新する
+      # wut は thread API 1.9.2 以上が必要なため、ソースからビルドして入れる
       # pkg.devkitpro.org の pacman は GitHub のランナーから 403 になったため使わない
       - name: Update wut (build from source)
         if: steps.dkp-cache.outputs.cache-hit != 'true'
