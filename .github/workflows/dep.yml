@@ -11,6 +11,11 @@ permissions:
 jobs:
   linux-build:
     runs-on: ubuntu-26.04
+    container:
+      image: devkitpro/devkitppc
+    env:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITPPC: /opt/devkitpro/devkitPPC
 
     steps:
       - name: Checkout repository
@@ -23,29 +28,22 @@ jobs:
 
       - name: Install host build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
+          apt-get update
+          apt-get install --yes --no-install-recommends \
             build-essential curl unzip ca-certificates
 
-      - name: Install devkitPro Wii U toolchain
+      - name: Verify devkitPro Wii U toolchain
         shell: bash
         run: |
           set -euxo pipefail
-          if command -v dkp-pacman >/dev/null 2>&1; then
-            dkp-pacman -Syu --needed --noconfirm wiiu-dev
-          elif [ -d /opt/devkitpro ]; then
-            export DEVKITPRO=/opt/devkitpro
-            export DEVKITPPC=/opt/devkitpro/devkitPPC
-            export PATH="$DEVKITPRO/tools/bin:$DEVKITPRO/devkitPPC/bin:$PATH"
-          else
-            echo "No devkitPro toolchain available in this runner/container"
-            exit 1
-          fi
+          command -v dkp-pacman
+          test -x "$DEVKITPPC/bin/powerpc-eabi-gcc"
+          test -x "$DEVKITPRO/tools/bin/elf2rpl"
+          test -f "$DEVKITPRO/wut/share/wut.ld"
 
       - name: Install project build dependencies
         run: |
           mkdir -p third_party/cafeglsl builder/bin
-
           curl --fail --silent --show-error --location \
             https://github.com/Exzap/CafeGLSL/releases/download/v0.2.0/glslcompiler.elf \
             --output third_party/cafeglsl/glslcompiler
@@ -72,8 +70,7 @@ jobs:
           .venv/bin/python tools/test_linux_build.py --full
 
       - name: Produce Linux bundle
-        run: |
-          .venv/bin/python builder/make_linux_zip.py
+        run: .venv/bin/python builder/make_linux_zip.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
