@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   linux-build:
+    # コンテナ(Debian bullseye, glibc 2.31)では最新の PySide6 の wheel が入らないため、
+    # ホストの ubuntu-26.04 で実行し、devkitPro だけイメージから取り出して使う
     runs-on: ubuntu-26.04
-    container:
-      image: ghcr.io/wiiu-env/devkitppc:20240505
     env:
       DEVKITPRO: /opt/devkitpro
       DEVKITPPC: /opt/devkitpro/devkitPPC
@@ -22,48 +22,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # コンテナは Debian bullseye (EOL) のため、apt の参照先を archive.debian.org に切り替える
-      - name: Install host build tools
+      - name: Extract devkitPro toolchain (Wii U)
         shell: bash
         run: |
-          set -eux
-          for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
-            [ -f "$f" ] || continue
-            sed -i \
-              -e '/bullseye-updates/d' \
-              -e 's|http://deb.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
-              -e 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' \
-              -e 's|http://security.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
-              "$f"
-          done
-          echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
-          apt-get update
-          apt-get install --yes --no-install-recommends \
-            build-essential curl unzip ca-certificates
-
-      # ghcr.io/wiiu-env/devkitppc には wut / elf2rpl が入っている。足りない場合だけ pacman で追加する
-      # (pkg.devkitpro.org は GitHub のランナーから 403 になることがあるため、通常は通信しない)
-      - name: Ensure Wii U toolchain (wut)
-        shell: bash
-        run: |
-          set -eux
-          if [ ! -x "$DEVKITPRO/tools/bin/elf2rpl" ] || [ ! -f "$DEVKITPRO/wut/share/wut.ld" ]; then
-            for i in 1 2 3; do
-              dkp-pacman -Sy --noconfirm --needed wut wut-tools && break
-              sleep 10
-            done
-          fi
+          set -euxo pipefail
+          id=$(docker create ghcr.io/wiiu-env/devkitppc:20240505)
+          docker cp "$id:/opt/devkitpro" /tmp/devkitpro
+          docker rm "$id"
+          sudo mv /tmp/devkitpro /opt/devkitpro
+          echo "/opt/devkitpro/tools/bin" >> "$GITHUB_PATH"
+          echo "/opt/devkitpro/devkitPPC/bin" >> "$GITHUB_PATH"
 
       - name: Verify devkitPro Wii U toolchain
         shell: bash
         run: |
           set -euxo pipefail
-          command -v dkp-pacman
           test -x "$DEVKITPPC/bin/powerpc-eabi-gcc"
           test -x "$DEVKITPRO/tools/bin/elf2rpl"
           test -f "$DEVKITPRO/wut/share/wut.ld"
 
-      # Debian ベースのコンテナでは setup-python が使えない場合があるため uv で Python 3.14 を用意する
+      # Python 3.14 は uv で用意する
       - name: Set up Python 3.14 (uv)
         shell: bash
         run: |
